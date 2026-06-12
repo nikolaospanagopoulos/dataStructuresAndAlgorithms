@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,9 +9,29 @@ struct vector {
   void *memory;
   size_t data_size;
   size_t capacity;
+  bool (*find_func)(void *to_compare1, void *to_compare2);
 };
 
-enum STATUS { OK, ALLOC_ERROR, NULL_PTR, OUT_OF_BOUNDS };
+enum STATUS { OK, ALLOC_ERROR, NULL_PTR, OUT_OF_BOUNDS, MISSING_ARG };
+
+enum STATUS vector_find(struct vector *vector, void *element_to_find,
+                        int *index_found) {
+  if (vector == NULL || element_to_find == NULL || index_found == NULL) {
+    return NULL_PTR;
+  }
+  if (vector->find_func == NULL) {
+    return MISSING_ARG;
+  }
+  for (size_t i = 0; i < vector->size; i++) {
+    if (vector->find_func((char *)vector->memory + (i * vector->data_size),
+                          element_to_find)) {
+      *index_found = i;
+      return OK;
+    }
+  }
+  *index_found = -1;
+  return OK;
+}
 
 enum STATUS vector_init(struct vector **vector, size_t data_size,
                         size_t capacity) {
@@ -22,6 +43,7 @@ enum STATUS vector_init(struct vector **vector, size_t data_size,
   *vector = vector_heap;
   (*vector)->capacity = capacity;
   (*vector)->data_size = data_size;
+  (*vector)->find_func = NULL;
 
   void *vector_memory = malloc(capacity * data_size);
   if (vector_memory == NULL) {
@@ -150,11 +172,19 @@ enum STATUS vector_shift_right(struct vector *vector) {
   return OK;
 }
 
+bool compare(void *num1, void *num2) {
+  int first = *(int *)num1;
+  int second = *(int *)num2;
+
+  return first == second;
+}
+
 int main() {
 
   struct vector *vec;
 
   vector_init(&vec, sizeof(int), 10);
+  vec->find_func = compare;
 
   int num = 10;
 
@@ -166,7 +196,6 @@ int main() {
   vector_push(vec, &num2);
   vector_push(vec, &num3);
   vector_push(vec, &num4);
-  vector_push_front(vec, &num5);
 
   vector_shift_left(vec);
   vector_shift_left(vec);
@@ -179,5 +208,13 @@ int main() {
       free(found);
     }
   }
+
+  int to_find = 122;
+  int found_index = -1;
+
+  vector_find(vec, &to_find, &found_index);
+
+  printf("element: %d was found at index: %d\n", to_find, found_index);
+
   return 0;
 }
