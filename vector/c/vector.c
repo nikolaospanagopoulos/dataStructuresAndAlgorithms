@@ -67,6 +67,29 @@ static enum STATUS expand_capacity(struct vector *vector) {
   vector->capacity *= 2;
   return OK;
 }
+
+enum STATUS vector_delete(struct vector *vector, size_t index,
+                          void (*delete_func)(void *to_delete)) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  if (index < 0 || index >= vector->size) {
+    return OUT_OF_BOUNDS;
+  }
+  if (delete_func != NULL) {
+    delete_func((char *)vector->memory + (index * vector->data_size));
+  }
+
+  for (size_t i = index; i < vector->size - 1; i++) {
+    memcpy((char *)vector->memory + (i * vector->data_size),
+           (char *)vector->memory + ((i + 1) * vector->data_size),
+           vector->data_size);
+  }
+  vector->size--;
+
+  return OK;
+}
+
 enum STATUS vector_push(struct vector *vector, void *element) {
   if (vector == NULL || element == NULL || vector->memory == NULL) {
     return NULL_PTR;
@@ -171,6 +194,15 @@ enum STATUS vector_shift_right(struct vector *vector) {
 
   return OK;
 }
+enum STATUS vector_free(struct vector *vector) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  free(vector->memory);
+  free(vector);
+
+  return OK;
+}
 
 bool compare(void *num1, void *num2) {
   int first = *(int *)num1;
@@ -201,6 +233,8 @@ int main() {
   vector_shift_left(vec);
 
   void *found = NULL;
+  vector_delete(vec, 1, NULL);
+
   for (size_t i = 0; i < vec->size; i++) {
     vector_get_element_by_index(vec, i, &found);
     printf("number: %d\n", *(int *)found);
@@ -209,12 +243,14 @@ int main() {
     }
   }
 
-  int to_find = 122;
-  int found_index = -1;
+  // int to_find = 122;
+  // int found_index = -1;
 
-  vector_find(vec, &to_find, &found_index);
+  // vector_find(vec, &to_find, &found_index);
 
-  printf("element: %d was found at index: %d\n", to_find, found_index);
+  // printf("element: %d was found at index: %d\n", to_find, found_index);
+
+  vector_free(vec);
 
   return 0;
 }
