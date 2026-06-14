@@ -36,16 +36,20 @@ enum STATUS vector_find(struct vector *vector, void *element_to_find,
 enum STATUS vector_init(struct vector **vector, size_t data_size,
                         size_t capacity) {
 
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
   void *vector_heap = malloc(sizeof(struct vector));
   if (vector_heap == NULL) {
     return ALLOC_ERROR;
   }
   *vector = vector_heap;
-  (*vector)->capacity = capacity;
+  (*vector)->capacity = capacity == 0 ? 10 : capacity;
+  (*vector)->size = 0;
   (*vector)->data_size = data_size;
   (*vector)->find_func = NULL;
 
-  void *vector_memory = malloc(capacity * data_size);
+  void *vector_memory = malloc((*vector)->capacity * data_size);
   if (vector_memory == NULL) {
     free(*vector);
     return ALLOC_ERROR;
@@ -68,7 +72,7 @@ static enum STATUS expand_capacity(struct vector *vector) {
   return OK;
 }
 
-enum STATUS vector_delete(struct vector *vector, size_t index,
+enum STATUS vector_delete(struct vector *vector, int index,
                           void (*delete_func)(void *to_delete)) {
   if (vector == NULL) {
     return NULL_PTR;
@@ -81,11 +85,35 @@ enum STATUS vector_delete(struct vector *vector, size_t index,
   }
 
   for (size_t i = index; i < vector->size - 1; i++) {
-    memcpy((char *)vector->memory + (i * vector->data_size),
-           (char *)vector->memory + ((i + 1) * vector->data_size),
-           vector->data_size);
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i + 1) * vector->data_size),
+            vector->data_size);
   }
   vector->size--;
+
+  return OK;
+}
+enum STATUS vector_add_element_at_index(struct vector *vector, void *element,
+                                        int index) {
+  if (vector == NULL || element == NULL) {
+    return NULL_PTR;
+  }
+  if (index < 0 || index > vector->size) {
+    return OUT_OF_BOUNDS;
+  }
+  if (vector->size == vector->capacity) {
+    if (expand_capacity(vector) == ALLOC_ERROR) {
+      return ALLOC_ERROR;
+    }
+  }
+  vector->size++;
+  for (size_t i = vector->size - 1; i > index; i--) {
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i - 1) * vector->data_size),
+            vector->data_size);
+  }
+  memcpy((char *)vector->memory + (index * vector->data_size), element,
+         vector->data_size);
 
   return OK;
 }
@@ -117,14 +145,14 @@ enum STATUS vector_push_front(struct vector *vector, void *element) {
   }
   vector->size++;
   for (size_t i = vector->size - 1; i > 0; i--) {
-    memcpy((char *)vector->memory + (i * vector->data_size),
-           (char *)vector->memory + ((i - 1) * vector->data_size),
-           vector->data_size);
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i - 1) * vector->data_size),
+            vector->data_size);
   }
   memcpy((char *)vector->memory, element, vector->data_size);
   return OK;
 }
-enum STATUS vector_get_element_by_index(struct vector *vector, size_t index,
+enum STATUS vector_get_element_by_index(struct vector *vector, int index,
                                         void **found) {
   if (vector == NULL || found == NULL) {
     return NULL_PTR;
@@ -132,14 +160,8 @@ enum STATUS vector_get_element_by_index(struct vector *vector, size_t index,
   if (index < 0 || index >= vector->size) {
     return OUT_OF_BOUNDS;
   }
-  void *mem_for_found = malloc(vector->data_size);
-  if (mem_for_found == NULL) {
-    return ALLOC_ERROR;
-  }
-  *found = mem_for_found;
 
-  memcpy(*found, (char *)vector->memory + (index * vector->data_size),
-         vector->data_size);
+  *found = (char *)vector->memory + (index * vector->data_size);
 
   return OK;
 }
@@ -158,13 +180,14 @@ enum STATUS vector_shift_left(struct vector *vector) {
   memcpy(first_element, vector->memory, vector->data_size);
 
   for (size_t i = 0; i < vector->size - 1; i++) {
-    memcpy((char *)vector->memory + ((i)*vector->data_size),
-           (char *)vector->memory + ((i + 1) * vector->data_size),
-           vector->data_size);
+    memmove((char *)vector->memory + ((i)*vector->data_size),
+            (char *)vector->memory + ((i + 1) * vector->data_size),
+            vector->data_size);
   }
   memcpy((char *)vector->memory + ((vector->size - 1) * vector->data_size),
          first_element, vector->data_size);
 
+  free(first_element);
   return OK;
 }
 
@@ -184,9 +207,9 @@ enum STATUS vector_shift_right(struct vector *vector) {
          vector->data_size);
 
   for (size_t i = vector->size - 1; i > 0; i--) {
-    memcpy((char *)vector->memory + (i * vector->data_size),
-           (char *)vector->memory + ((i - 1) * vector->data_size),
-           vector->data_size);
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i - 1) * vector->data_size),
+            vector->data_size);
   }
   memcpy((char *)vector->memory, last_element, vector->data_size);
 
@@ -235,12 +258,12 @@ int main() {
   void *found = NULL;
   vector_delete(vec, 1, NULL);
 
+  vector_add_element_at_index(vec, &num4, 2);
+  vector_add_element_at_index(vec, &num4, 3);
+
   for (size_t i = 0; i < vec->size; i++) {
     vector_get_element_by_index(vec, i, &found);
     printf("number: %d\n", *(int *)found);
-    if (found) {
-      free(found);
-    }
   }
 
   // int to_find = 122;
