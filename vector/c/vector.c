@@ -1,19 +1,249 @@
+#include "vector.h"
+#include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-struct vector {
-  size_t size;
-  void *memory;
-  size_t data_size;
-  size_t capacity;
-  bool (*find_func)(void *to_compare1, void *to_compare2);
-};
+enum STATUS vector_shift_left_ts(struct vector *vector) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  if (vector->size <= 1) {
+    pthread_rwlock_unlock(&vector->lock);
+    return OK;
+  }
 
-enum STATUS { OK, ALLOC_ERROR, NULL_PTR, OUT_OF_BOUNDS, MISSING_ARG };
+  void *first_element = malloc(vector->data_size);
+  if (first_element == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return ALLOC_ERROR;
+  }
+  memcpy(first_element, vector->memory, vector->data_size);
 
+  for (size_t i = 0; i < vector->size - 1; i++) {
+    memmove((char *)vector->memory + ((i)*vector->data_size),
+            (char *)vector->memory + ((i + 1) * vector->data_size),
+            vector->data_size);
+  }
+  memcpy((char *)vector->memory + ((vector->size - 1) * vector->data_size),
+         first_element, vector->data_size);
+
+  free(first_element);
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_shift_right_ts(struct vector *vector) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  if (vector->size <= 1) {
+    pthread_rwlock_unlock(&vector->lock);
+    return OK;
+  }
+  void *last_element = malloc((vector->data_size));
+  if (last_element == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return ALLOC_ERROR;
+  }
+  memcpy(last_element,
+         (char *)vector->memory + ((vector->size - 1) * vector->data_size),
+         vector->data_size);
+
+  for (size_t i = vector->size - 1; i > 0; i--) {
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i - 1) * vector->data_size),
+            vector->data_size);
+  }
+  memcpy((char *)vector->memory, last_element, vector->data_size);
+
+  free(last_element);
+
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_delete_ts(struct vector *vector, int index,
+                          void (*delete_func)(void *to_delete)) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  if (index < 0 || index >= vector->size) {
+  pthread_rwlock_unlock(&vector->lock);
+    return OUT_OF_BOUNDS;
+  }
+  if (delete_func != NULL) {
+    delete_func((char *)vector->memory + (index * vector->data_size));
+  }
+
+  for (size_t i = index; i < vector->size - 1; i++) {
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i + 1) * vector->data_size),
+            vector->data_size);
+  }
+  vector->size--;
+
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_free_ts(struct vector *vector) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  free(vector->memory);
+  pthread_rwlock_unlock(&vector->lock);
+  pthread_rwlock_destroy(&vector->lock);
+  free(vector);
+
+  return OK;
+}
+static enum STATUS expand_capacity(struct vector *vector) {
+  void *expand =
+      realloc(vector->memory, (vector->capacity * 2) * vector->data_size);
+  if (expand == NULL) {
+    return ALLOC_ERROR;
+  }
+  printf("expanding....\n");
+  vector->memory = expand;
+
+  vector->capacity *= 2;
+  return OK;
+}
+enum STATUS vector_push_ts(struct vector *vector, void *element) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  if (element == NULL || vector->memory == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return NULL_PTR;
+  }
+  if (vector->size == vector->capacity) {
+    if (expand_capacity(vector) == ALLOC_ERROR) {
+      pthread_rwlock_unlock(&vector->lock);
+      return ALLOC_ERROR;
+    }
+  }
+  memcpy((char *)vector->memory + (vector->size * vector->data_size), element,
+         vector->data_size);
+
+  vector->size++;
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_push_front_ts(struct vector *vector, void *element) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  if (element == NULL || vector->memory == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return NULL_PTR;
+  }
+  if (vector->size == vector->capacity) {
+    if (expand_capacity(vector) == ALLOC_ERROR) {
+      pthread_rwlock_unlock(&vector->lock);
+      return ALLOC_ERROR;
+    }
+  }
+  vector->size++;
+  for (size_t i = vector->size - 1; i > 0; i--) {
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i - 1) * vector->data_size),
+            vector->data_size);
+  }
+  memcpy((char *)vector->memory, element, vector->data_size);
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_add_element_at_index_ts(struct vector *vector, void *element,
+                                           int index) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_wrlock(&vector->lock);
+  if (element == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return NULL_PTR;
+  }
+  if (index < 0 || index > vector->size) {
+    pthread_rwlock_unlock(&vector->lock);
+    return OUT_OF_BOUNDS;
+  }
+  if (vector->size == vector->capacity) {
+    if (expand_capacity(vector) == ALLOC_ERROR) {
+      pthread_rwlock_unlock(&vector->lock);
+      return ALLOC_ERROR;
+    }
+  }
+  vector->size++;
+  for (size_t i = vector->size - 1; i > index; i--) {
+    memmove((char *)vector->memory + (i * vector->data_size),
+            (char *)vector->memory + ((i - 1) * vector->data_size),
+            vector->data_size);
+  }
+  memcpy((char *)vector->memory + (index * vector->data_size), element,
+         vector->data_size);
+
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_find_ts(struct vector *vector, void *element_to_find,
+                           int *index_found) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_rdlock(&vector->lock);
+  if (element_to_find == NULL || index_found == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return NULL_PTR;
+  }
+  if (vector->find_func == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return MISSING_ARG;
+  }
+  for (size_t i = 0; i < vector->size; i++) {
+    if (vector->find_func((char *)vector->memory + (i * vector->data_size),
+                          element_to_find)) {
+      *index_found = i;
+      pthread_rwlock_unlock(&vector->lock);
+      return OK;
+    }
+  }
+  *index_found = -1;
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
+enum STATUS vector_get_element_by_index_ts(struct vector *vector, int index,
+                                           void **found) {
+  if (vector == NULL) {
+    return NULL_PTR;
+  }
+  pthread_rwlock_rdlock(&vector->lock);
+  if (found == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return NULL_PTR;
+  }
+  if (index < 0 || index >= vector->size) {
+    pthread_rwlock_unlock(&vector->lock);
+    return OUT_OF_BOUNDS;
+  }
+  *found = malloc(vector->data_size);
+  if (*found == NULL) {
+    pthread_rwlock_unlock(&vector->lock);
+    return ALLOC_ERROR;
+  }
+
+  memcpy(*found, (char *)vector->memory + (index * vector->data_size),
+         vector->data_size);
+
+  pthread_rwlock_unlock(&vector->lock);
+  return OK;
+}
 enum STATUS vector_find(struct vector *vector, void *element_to_find,
                         int *index_found) {
   if (vector == NULL || element_to_find == NULL || index_found == NULL) {
@@ -48,6 +278,7 @@ enum STATUS vector_init(struct vector **vector, size_t data_size,
   (*vector)->size = 0;
   (*vector)->data_size = data_size;
   (*vector)->find_func = NULL;
+  pthread_rwlock_init(&(*vector)->lock, NULL);
 
   void *vector_memory = malloc((*vector)->capacity * data_size);
   if (vector_memory == NULL) {
@@ -56,19 +287,6 @@ enum STATUS vector_init(struct vector **vector, size_t data_size,
   }
 
   (*vector)->memory = vector_memory;
-  return OK;
-}
-
-static enum STATUS expand_capacity(struct vector *vector) {
-  void *expand =
-      realloc(vector->memory, (vector->capacity * 2) * vector->data_size);
-  if (expand == NULL) {
-    return ALLOC_ERROR;
-  }
-  printf("expanding....\n");
-  vector->memory = expand;
-
-  vector->capacity *= 2;
   return OK;
 }
 
@@ -93,6 +311,7 @@ enum STATUS vector_delete(struct vector *vector, int index,
 
   return OK;
 }
+
 enum STATUS vector_add_element_at_index(struct vector *vector, void *element,
                                         int index) {
   if (vector == NULL || element == NULL) {
@@ -152,6 +371,7 @@ enum STATUS vector_push_front(struct vector *vector, void *element) {
   memcpy((char *)vector->memory, element, vector->data_size);
   return OK;
 }
+
 enum STATUS vector_get_element_by_index(struct vector *vector, int index,
                                         void **found) {
   if (vector == NULL || found == NULL) {
@@ -160,9 +380,12 @@ enum STATUS vector_get_element_by_index(struct vector *vector, int index,
   if (index < 0 || index >= vector->size) {
     return OUT_OF_BOUNDS;
   }
-
-  *found = (char *)vector->memory + (index * vector->data_size);
-
+  *found = malloc(vector->data_size);
+  if (*found == NULL) {
+    return ALLOC_ERROR;
+  }
+  memcpy(*found, (char *)vector->memory + (index * vector->data_size),
+         vector->data_size);
   return OK;
 }
 enum STATUS vector_shift_left(struct vector *vector) {
@@ -225,55 +448,4 @@ enum STATUS vector_free(struct vector *vector) {
   free(vector);
 
   return OK;
-}
-
-bool compare(void *num1, void *num2) {
-  int first = *(int *)num1;
-  int second = *(int *)num2;
-
-  return first == second;
-}
-
-int main() {
-
-  struct vector *vec;
-
-  vector_init(&vec, sizeof(int), 10);
-  vec->find_func = compare;
-
-  int num = 10;
-
-  int num2 = 60;
-  int num3 = 23;
-  int num4 = 12;
-  int num5 = 90;
-  vector_push(vec, &num);
-  vector_push(vec, &num2);
-  vector_push(vec, &num3);
-  vector_push(vec, &num4);
-
-  vector_shift_left(vec);
-  vector_shift_left(vec);
-
-  void *found = NULL;
-  vector_delete(vec, 1, NULL);
-
-  vector_add_element_at_index(vec, &num4, 2);
-  vector_add_element_at_index(vec, &num4, 3);
-
-  for (size_t i = 0; i < vec->size; i++) {
-    vector_get_element_by_index(vec, i, &found);
-    printf("number: %d\n", *(int *)found);
-  }
-
-  // int to_find = 122;
-  // int found_index = -1;
-
-  // vector_find(vec, &to_find, &found_index);
-
-  // printf("element: %d was found at index: %d\n", to_find, found_index);
-
-  vector_free(vec);
-
-  return 0;
 }
