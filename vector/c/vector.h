@@ -14,7 +14,7 @@ struct vector {
 };
 
 
-enum STATUS { OK, ALLOC_ERROR, NULL_PTR, OUT_OF_BOUNDS, MISSING_ARG };
+enum STATUS { OK, ALLOC_ERROR, NULL_PTR, OUT_OF_BOUNDS, MISSING_ARG, NOT_FOUND};
 
 enum STATUS vector_find(struct vector *vector, void *element_to_find,
                         int *index_found);

@@ -19,19 +19,20 @@ int main() {
   int num3 = 23;
   int num4 = 12;
   int num5 = 90;
-  vector_push(vec, &num);
-  vector_push(vec, &num2);
-  vector_push(vec, &num3);
-  vector_push(vec, &num4);
+  vector_push_front(vec, &num);
+  vector_push_front(vec, &num2);
+  vector_push_front(vec, &num3);
+  vector_push_front(vec, &num4);
 
-  vector_shift_left(vec);
-  vector_shift_left(vec);
+  vector_add_element_at_index(vec, &num5, 1);
+
+  vector_delete(vec, 0,NULL);
+  vector_delete(vec, 1,NULL);
+
+
+
 
   void *found = NULL;
-  vector_delete(vec, 1, NULL);
-
-  vector_add_element_at_index(vec, &num4, 2);
-  vector_add_element_at_index(vec, &num4, 3);
 
   for (size_t i = 0; i < vec->size; i++) {
     vector_get_element_by_index(vec, i, &found);
